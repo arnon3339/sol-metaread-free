@@ -1,0 +1,3 @@
+[submodule "meta-read"]
+	path = meta-read
+	url = https://github.com/arnon3339/meta-read-free.git
