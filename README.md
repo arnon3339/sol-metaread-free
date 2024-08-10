@@ -48,15 +48,15 @@ This repository contains a FastAPI backend that reads and updates a database wit
     Set up necessary environment variables in a `.env` file.
 
     ```plaintext
-        ENV
-        POSTGRES_PROD
-        POSTGRES_DEV
-        ENDPOINT
-        COLLECTIONKEY
-        CANDY_PROGRAM_ID
-        CANDY_GUARD_ID
-        CANDY_MINT_ACC
-        MINTSIGNATURE
+    ENV=your_environment
+    POSTGRES_PROD=your_production_database_url
+    POSTGRES_DEV=your_development_database_url
+    ENDPOINT=your_solona_endpoint
+    COLLECTIONKEY=your_collection_key
+    CANDY_PROGRAM_ID=your_candy_program_id
+    CANDY_GUARD_ID=your_candy_guard_id
+    CANDY_MINT_ACC=your_candy_mint_account
+    MINTSIGNATURE=your_mint_signature
     ```
 
 5. **Run the application**:
