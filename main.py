@@ -8,10 +8,33 @@ from modules.models.resmodel import Mint, Creator
 from contextlib import asynccontextmanager
 from typing import Dict, List
 from dotenv import dotenv_values 
+from pydantic import BaseSettings
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import exc
+import os
 
 from modules import nftmint
 
-async def run_app(endpoint: str, pubkeys: Dict, engine: AsyncEngine, lastsig: str) -> None:
+class Settings(BaseSettings):
+    
+    postgres_prod: str
+    postgres_dev: str
+    collectionkey: str
+    candy_program_id: str
+    candy_guard_id: str
+    candy_mint_acc: str
+    mintsignature: str
+    frontend_url: str
+    sol_endpoint: str
+    
+    class Config:
+        if os.getenv("ENV") == "production":
+            env_file = None  # Use system env variables
+        else:
+            env_file = ".env"  # Use .env file for development
+            
+
+async def run_app(sol_endpoint: str, pubkeys: Dict, engine: AsyncEngine, lastsig: str) -> None:
     first_args = {"lastsignature": lastsig, 
             "running": False}
     if not first_args["running"]:
@@ -23,46 +46,52 @@ async def run_app(endpoint: str, pubkeys: Dict, engine: AsyncEngine, lastsig: st
                 latest_signature = result.first()
                 if latest_signature:
                     first_args["lastsignature"] = latest_signature
-            await nftmint.update_mint(endpoint, pubkeys, async_session, first_args)
+            await nftmint.update_mint(settings.sol_endpoint, pubkeys, async_session, first_args)
         except:
             pass
+        
+settings = Settings()
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> None:
-    engine = None
-    endpoint = ""
-    pubkey = {}
-    config = dotenv_values("../env.local")
-    if config["ENV"] == "PRODUCTION":
-        engine = create_async_engine(config["POSTGRES_PROD"])
+async def lifespan(app: FastAPI):
+    global engine
+    if os.getenv("ENV") == "production":
+        engine = create_async_engine(settings.postgres_prod)
     else:
-        engine = create_async_engine(config["POSTGRES_DEV"])
-        endpoint = config["ENDPOINT"]
+        engine = create_async_engine(settings.postgres_dev)
         pubkeys = {
-            "collection": config["COLLECTIONKEY"], 
-            "candyprogid": config["CANDY_PROGRAM_ID"],
-            "candyguardgid": config["CANDY_GUARD_ID"],
-            "candymintacc": config["CANDY_MINT_ACC"],
+            "collection": settings.collectionkey, 
+            "candyprogid": settings.candy_program_id,
+            "candyguardgid": settings.candy_guard_id,
+            "candymintacc": settings.candy_mint_acc,
                } 
     try:
         async with engine.begin() as conn:
             await conn.run_sync(NftMintBase.metadata.create_all)
-        asyncio.create_task(run_app(endpoint, pubkeys, engine, config["MINTSIGNATURE"]))
+        asyncio.create_task(run_app(settings.sol_endpoint, pubkeys, engine, settings.mintsignature))
     except:
         pass
     yield
     engine.dispose()
 
+origins = [
+    settings.frontend_url
+]
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 async def get_all():
-    engine = None
-    config = dotenv_values(".env")
-    if config["ENV"] == "PRODUCTION":
-        engine = create_async_engine(config["POSTGRES_PROD"])
+    if os.getenv("ENV") == "production":
+        engine = create_async_engine(settings.postgres_prod)
     else:
-        engine = create_async_engine(config["POSTGRES_DEV"])
+        engine = create_async_engine(settings.postgres_dev)
     results = []
     try:
         async_session = async_sessionmaker(engine, expire_on_commit=False)
@@ -88,12 +117,10 @@ async def get_all():
 
 @app.get("/mint/from-name/{name}")
 async def get_mint_by_name(name: str):
-    engine = None
-    config = dotenv_values(".env")
-    if config["ENV"] == "PRODUCTION":
-        engine = create_async_engine(config["POSTGRES_PROD"])
+    if os.getenv("ENV") == "production":
+        engine = create_async_engine(settings.postgres_prod)
     else:
-        engine = create_async_engine(config["POSTGRES_DEV"])
+        engine = create_async_engine(settings.postgres_dev)
     async_session = async_sessionmaker(engine, expire_on_commit=False)
     result = None
     async with async_session() as session:
@@ -111,20 +138,18 @@ async def get_mint_by_name(name: str):
             creators = [Creator.model_validate(c) for c in new_creators]
             result = Mint.model_validate(mint)
             result.creators = creators
-        except:
-            pass
+        except exc.SQLAlchemyError as e:
+            print(type(e))
     if not result:
         raise HTTPException(status_code=400, detail=f'No mint name "{name}"')
     return result
 
 @app.get("/mint/from-address/{address}")
 async def get_mint_by_name(address: str) -> Mint:
-    engine = None
-    config = dotenv_values(".env")
-    if config["ENV"] == "PRODUCTION":
-        engine = create_async_engine(config["POSTGRES_PROD"])
+    if os.getenv("ENV") == "production":
+        engine = create_async_engine(settings.postgres_prod)
     else:
-        engine = create_async_engine(config["POSTGRES_DEV"])
+        engine = create_async_engine(settings.postgres_dev)
     async_session = async_sessionmaker(engine, expire_on_commit=False)
     result = None
     async with async_session() as session:
@@ -142,20 +167,18 @@ async def get_mint_by_name(address: str) -> Mint:
             creators = [Creator.model_validate(c) for c in new_creators]
             result = Mint.model_validate(mint)
             result.creators = creators
-        except:
-            pass
+        except exc.SQLAlchemyError as e:
+            print(type(e))
     if not result:
         raise HTTPException(status_code=400, detail=f'No mint name "{mint}"')
     return result
 
 @app.get("/mint/newest")
 async def get_mint_by_name() -> Mint:
-    engine = None
-    config = dotenv_values(".env")
-    if config["ENV"] == "PRODUCTION":
-        engine = create_async_engine(config["POSTGRES_PROD"])
+    if os.getenv("ENV") == "production":
+        engine = create_async_engine(settings.postgres_prod)
     else:
-        engine = create_async_engine(config["POSTGRES_DEV"])
+        engine = create_async_engine(settings.postgres_dev)
     async_session = async_sessionmaker(engine, expire_on_commit=False)
     result = None
     async with async_session() as session:
@@ -173,20 +196,18 @@ async def get_mint_by_name() -> Mint:
             creators = [Creator.model_validate(c) for c in new_creators]
             result = Mint.model_validate(mint)
             result.creators = creators
-        except:
-            pass
+        except exc.SQLAlchemyError as e:
+            print(type(e))
     if not result:
         raise HTTPException(status_code=400, detail=f'No mint found"')
     return result
 
 @app.get("/mint/oldest")
 async def get_mint_by_name() -> Mint:
-    engine = None
-    config = dotenv_values(".env")
-    if config["ENV"] == "PRODUCTION":
-        engine = create_async_engine(config["POSTGRES_PROD"])
+    if os.getenv("ENV") == "production":
+        engine = create_async_engine(settings.postgres_prod)
     else:
-        engine = create_async_engine(config["POSTGRES_DEV"])
+        engine = create_async_engine(settings.postgres_dev)
     async_session = async_sessionmaker(engine, expire_on_commit=False)
     result = None
     async with async_session() as session:
@@ -204,8 +225,8 @@ async def get_mint_by_name() -> Mint:
             creators = [Creator.model_validate(c) for c in new_creators]
             result = Mint.model_validate(mint)
             result.creators = creators
-        except:
-            pass
+        except exc.SQLAlchemyError as e:
+            print(type(e))
     if not result:
         raise HTTPException(status_code=400, detail=f'No mint found"')
     return result

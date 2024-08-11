@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 from modules import metadb
 from modules.metaplex import Metadata
 import json
+from sqlalchemy import exc
 
 async def update_mint(endpoint: str, pubkeys: Dict, async_session: async_sessionmaker[AsyncSession],
         first_args: Dict) -> None:
@@ -29,8 +30,8 @@ async def update_mint(endpoint: str, pubkeys: Dict, async_session: async_session
                     nft_metas = await collect_nfts(client, signatures, pubkeys)
                     if nft_metas:
                         await metadb.upload_metas(async_session, nft_metas)
-            except:
-                pass
+            except exc.SQLAlchemyError as e:
+                print(type(e))
             await asyncio.sleep(5)
             first_args["running"] = False
 
@@ -60,6 +61,6 @@ async def collect_nfts(client: AsyncClient, signatures: List[str], pubkeys: List
             blocktime = tx_norm.value.block_time
             meta_data = await get_metadata(client, nft_mint, nft_minter, signature, blocktime)
             nft_metas.append(meta_data)
-        except:
-            continue
+        except exc.SQLAlchemyError as e:
+            print(type(e))
     return nft_metas 
